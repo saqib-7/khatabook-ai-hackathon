@@ -267,9 +267,6 @@ export function ScanReceiptModal({ isOpen, onClose, onScanComplete }: ScanReceip
         video: { facingMode: 'environment' }
       });
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
       streamRef.current = stream;
       setIsCameraActive(true);
     } catch (err) {
@@ -277,6 +274,13 @@ export function ScanReceiptModal({ isOpen, onClose, onScanComplete }: ScanReceip
       alert("Unable to access camera. Please allow permissions.");
     }
   };
+
+  useEffect(() => {
+    if (isCameraActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(e => console.error("Error playing video:", e));
+    }
+  }, [isCameraActive]);
 
   const captureImage = () => {
     if (videoRef.current && canvasRef.current) {
