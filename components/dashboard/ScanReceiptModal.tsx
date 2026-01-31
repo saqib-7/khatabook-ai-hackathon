@@ -18,6 +18,14 @@ interface ScannedData {
   invoice_date?: string;
   total_amount?: number;
   status?: string;
+  // New Fields
+  invoice_number?: string;
+  place_of_supply?: string;
+  taxable_value?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  cess_amount?: number;
   compliance_issues?: string[];
 }
 
@@ -97,11 +105,15 @@ function ResultCard({ data, onClose, onSave }: { data: ScannedData; onClose: () 
           <div>
             <h2 className="text-xl font-bold uppercase tracking-tight">{data.vendor_name || "UNKNOWN VENDOR"}</h2>
             <div className="text-xs mt-1 uppercase">GSTIN: <span className="font-bold">{data.gstin || "NOT FOUND"}</span></div>
+            <div className="text-xs mt-1 uppercase">INV NO: <span className="font-bold">{data.invoice_number || "N/A"}</span></div>
           </div>
           <div className="text-right">
             <div className="text-sm font-bold">{data.invoice_date || "DATE UNKNOWN"}</div>
             <div className="text-[10px] uppercase mt-1">
               STATUS: <span className={isSafe ? "text-black" : "text-red-600"}>{data.status || "PENDING"}</span>
+            </div>
+            <div className="text-[10px] uppercase mt-1">
+              POS: <span className="font-bold">{data.place_of_supply || "N/A"}</span>
             </div>
           </div>
         </div>
@@ -138,47 +150,36 @@ function ResultCard({ data, onClose, onSave }: { data: ScannedData; onClose: () 
         </div>
       </div>
 
-      {/* Risk Grid */}
+      {/* GSTR-3B Tax Analysis (Replaces Risk Grid) */}
       <div className="border border-black/10 p-4 mb-6 bg-black/[0.02]">
         <div className="text-[10px] text-black/40 uppercase tracking-[0.2em] mb-4">
-          // RISK ASSESSMENT
+          // GSTR-3B TAX ANALYSIS
         </div>
-        <div className="grid grid-cols-2 gap-y-3 gap-x-8">
-          <div className="flex items-center justify-between text-xs">
-            <span className="flex items-center gap-2">
-              <div className={cn("w-3 h-3 border border-black rounded-full flex items-center justify-center", !isSafe && "bg-black text-white")}>
-                {!isSafe && <X className="w-2 h-2" />}
-                {isSafe && <CheckCircle2 className="w-2 h-2 opacity-0" />}
-              </div>
-              GSTR-1:
-            </span>
-            <span className="font-bold">{!isSafe ? "NOT FILED" : "FILED"}</span>
+        <div className="space-y-2 text-xs">
+          <div className="flex justify-between items-center pb-2 border-b border-black/5">
+            <span>TAXABLE VALUE</span>
+            <span className="font-bold">{formatCurrency(data.taxable_value)}</span>
           </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="flex items-center gap-2">
-              <div className="w-3 h-3 border border-black rounded-full flex items-center justify-center">
-                <div className="w-1 h-1 bg-black rounded-full" />
-              </div>
-              GSTR-3B:
-            </span>
-            <span className="font-bold">PENDING</span>
+          <div className="flex justify-between items-center">
+            <span>CGST</span>
+            <span className="font-bold">{formatCurrency(data.cgst_amount)}</span>
           </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="flex items-center gap-2">
-              <div className={cn("w-3 h-3 border border-black rounded-full flex items-center justify-center", !isSafe && "bg-black text-white")}>
-                {!isSafe && <Ban className="w-2 h-2" />}
-              </div>
-              ITC MATCH:
-            </span>
-            <span className="font-bold">{!isSafe ? "FAILED" : "LIKELY"}</span>
+          <div className="flex justify-between items-center">
+            <span>SGST</span>
+            <span className="font-bold">{formatCurrency(data.sgst_amount)}</span>
           </div>
-          <div className="flex items-center justify-between text-xs">
-            <span className="flex items-center gap-2">
-              <AlertTriangle className="w-3 h-3" />
-              RISK LEVEL:
-            </span>
-            <span className="font-bold">{!isSafe ? "HIGH" : "LOW"}</span>
-          </div>
+          {data.igst_amount && data.igst_amount > 0 && (
+            <div className="flex justify-between items-center">
+              <span>IGST</span>
+              <span className="font-bold">{formatCurrency(data.igst_amount)}</span>
+            </div>
+          )}
+          {data.cess_amount && data.cess_amount > 0 && (
+            <div className="flex justify-between items-center">
+              <span>CESS</span>
+              <span className="font-bold">{formatCurrency(data.cess_amount)}</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -312,7 +313,15 @@ export function ScanReceiptModal({ isOpen, onClose, onScanComplete }: ScanReceip
         gstin: scannedData.gstin,
         amount: scannedData.total_amount,
         status: status,
-        invoice_date: scannedData.invoice_date
+        invoice_date: scannedData.invoice_date,
+        // GSTR-3B Fields
+        taxable_value: scannedData.taxable_value,
+        cgst_amount: scannedData.cgst_amount,
+        sgst_amount: scannedData.sgst_amount,
+        igst_amount: scannedData.igst_amount,
+        cess_amount: scannedData.cess_amount,
+        invoice_number: scannedData.invoice_number,
+        place_of_supply: scannedData.place_of_supply
       };
 
       const res = await fetch('/api/compliance', {
