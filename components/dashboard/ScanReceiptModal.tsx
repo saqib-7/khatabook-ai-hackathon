@@ -307,21 +307,20 @@ export function ScanReceiptModal({ isOpen, onClose, onScanComplete }: ScanReceip
     setIsSaving(true);
 
     try {
-      // Prepare payload
+      // Prepare payload — always send GSTR-3B keys with fallbacks so API/DB get explicit values
       const payload = {
         vendor_name: scannedData.vendor_name,
         gstin: scannedData.gstin,
         amount: scannedData.total_amount,
         status: status,
         invoice_date: scannedData.invoice_date,
-        // GSTR-3B Fields
-        taxable_value: scannedData.taxable_value,
-        cgst_amount: scannedData.cgst_amount,
-        sgst_amount: scannedData.sgst_amount,
-        igst_amount: scannedData.igst_amount,
-        cess_amount: scannedData.cess_amount,
-        invoice_number: scannedData.invoice_number,
-        place_of_supply: scannedData.place_of_supply
+        taxable_value: scannedData.taxable_value ?? 0,
+        cgst_amount: scannedData.cgst_amount ?? 0,
+        sgst_amount: scannedData.sgst_amount ?? 0,
+        igst_amount: scannedData.igst_amount ?? 0,
+        cess_amount: scannedData.cess_amount ?? 0,
+        invoice_number: scannedData.invoice_number ?? null,
+        place_of_supply: scannedData.place_of_supply ?? null
       };
 
       const res = await fetch('/api/compliance', {

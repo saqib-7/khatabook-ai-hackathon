@@ -92,18 +92,18 @@ export class ComplianceService {
                 .from('compliance_records')
                 .insert([{
                     vendor_name: record.vendor_name,
-                    gstin: record.gstin,
+                    gstin: record.gstin ?? null,
                     status: record.status || 'Pending',
                     amount: record.amount,
                     invoice_date: record.invoice_date || new Date().toISOString().split('T')[0],
-                    // GSTR-3B Fields
-                    taxable_value: record.taxable_value || 0,
-                    cgst_amount: record.cgst_amount || 0,
-                    sgst_amount: record.sgst_amount || 0,
-                    igst_amount: record.igst_amount || 0,
-                    cess_amount: record.cess_amount || 0,
-                    invoice_number: record.invoice_number,
-                    place_of_supply: record.place_of_supply
+                    // GSTR-3B Fields — use nullish coalescing so we always send a value (never omit key)
+                    taxable_value: record.taxable_value ?? 0,
+                    cgst_amount: record.cgst_amount ?? 0,
+                    sgst_amount: record.sgst_amount ?? 0,
+                    igst_amount: record.igst_amount ?? 0,
+                    cess_amount: record.cess_amount ?? 0,
+                    invoice_number: record.invoice_number ?? null,
+                    place_of_supply: record.place_of_supply ?? null
                 }])
                 .select()
                 .single();

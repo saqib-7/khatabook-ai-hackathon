@@ -9,19 +9,29 @@ const fastRouter = new OpenAI({
 
 import { complianceService } from './compliance-service';
 
-/** Pick first non-undefined value from obj for given keys (case-insensitive match). */
+/** Pick first non-undefined, non-null value from obj for given keys (case-insensitive, normalizes spaces and camelCase). */
 function pickFirst(obj: Record<string, unknown>, ...keys: string[]): unknown {
-    const lower: Record<string, unknown> = {};
-    for (const k of Object.keys(obj)) lower[k.toLowerCase().replace(/\s+/g, '_')] = obj[k];
+    const normalized: Record<string, unknown> = {};
+    for (const k of Object.keys(obj)) {
+        const n = k.toLowerCase().replace(/\s+/g, '_').replace(/_/g, '');
+        normalized[n] = obj[k];
+        normalized[k.toLowerCase().replace(/\s+/g, '_')] = obj[k];
+    }
     for (const key of keys) {
-        const val = obj[key] ?? lower[key.toLowerCase().replace(/\s+/g, '_')];
-        if (val !== undefined && val !== null) return val;
+        const n = key.toLowerCase().replace(/\s+/g, '_').replace(/_/g, '');
+        const val = obj[key] ?? normalized[key.toLowerCase().replace(/\s+/g, '_')] ?? normalized[n];
+        if (val !== undefined && val !== null && val !== '') return val;
     }
     return undefined;
 }
 
 function toNum(val: unknown): number {
     if (typeof val === 'number' && !Number.isNaN(val)) return val;
+    if (typeof val === 'string') {
+        const cleaned = val.replace(/,/g, '').trim();
+        const n = Number(cleaned);
+        return Number.isNaN(n) ? 0 : n;
+    }
     const n = Number(val);
     return Number.isNaN(n) ? 0 : n;
 }
@@ -34,19 +44,22 @@ function toStringOrNull(val: unknown): string | null {
 
 /** Normalize AI receipt response to expected keys and types for DB/frontend. */
 function normalizeReceiptData(data: Record<string, unknown>): Record<string, unknown> {
+    const taxBreakdown = (data.tax_breakdown ?? data.tax ?? data.tax_details) as Record<string, unknown> | undefined;
+    const flat = taxBreakdown && typeof taxBreakdown === 'object' ? { ...data, ...taxBreakdown } : data;
+
     return {
-        vendor_name: toStringOrNull(pickFirst(data, 'vendor_name', 'vendor name', 'seller_name', 'supplier_name')) ?? data.vendor_name ?? '',
-        gstin: toStringOrNull(pickFirst(data, 'gstin', 'gstin_no', 'gst_number')) ?? data.gstin ?? '',
-        invoice_date: toStringOrNull(pickFirst(data, 'invoice_date', 'invoice date', 'date', 'inv_date')) ?? data.invoice_date ?? '',
-        total_amount: toNum(pickFirst(data, 'total_amount', 'total amount', 'total', 'grand_total', 'amount')),
+        vendor_name: toStringOrNull(pickFirst(flat, 'vendor_name', 'vendor name', 'seller_name', 'supplier_name')) ?? (data.vendor_name as string) ?? '',
+        gstin: toStringOrNull(pickFirst(flat, 'gstin', 'gstin_no', 'gst_number')) ?? (data.gstin as string) ?? '',
+        invoice_date: toStringOrNull(pickFirst(flat, 'invoice_date', 'invoice date', 'date', 'inv_date')) ?? (data.invoice_date as string) ?? '',
+        total_amount: toNum(pickFirst(flat, 'total_amount', 'total amount', 'total', 'grand_total', 'amount')),
         status: (typeof data.status === 'string' && (data.status === 'Safe' || data.status === 'Failed')) ? data.status : (data.gstin ? 'Safe' : 'Failed'),
-        invoice_number: toStringOrNull(pickFirst(data, 'invoice_number', 'invoice_no', 'inv_no', 'bill_no', 'invoice no', 'bill no')),
-        place_of_supply: toStringOrNull(pickFirst(data, 'place_of_supply', 'pos', 'place of supply')),
-        taxable_value: toNum(pickFirst(data, 'taxable_value', 'taxable value', 'taxable_value_before_tax', 'assessable_value')),
-        cgst_amount: toNum(pickFirst(data, 'cgst_amount', 'cgst', 'cgst amount')),
-        sgst_amount: toNum(pickFirst(data, 'sgst_amount', 'sgst', 'sgst amount')),
-        igst_amount: toNum(pickFirst(data, 'igst_amount', 'igst', 'igst amount')),
-        cess_amount: toNum(pickFirst(data, 'cess_amount', 'cess', 'cess amount')),
+        invoice_number: toStringOrNull(pickFirst(flat, 'invoice_number', 'invoice_no', 'inv_no', 'bill_no', 'invoice no', 'bill no', 'invoicenumber')),
+        place_of_supply: toStringOrNull(pickFirst(flat, 'place_of_supply', 'pos', 'place of supply', 'placeofsupply')),
+        taxable_value: toNum(pickFirst(flat, 'taxable_value', 'taxable value', 'taxable_value_before_tax', 'assessable_value', 'taxablevalue')),
+        cgst_amount: toNum(pickFirst(flat, 'cgst_amount', 'cgst', 'cgst amount', 'cgstamount')),
+        sgst_amount: toNum(pickFirst(flat, 'sgst_amount', 'sgst', 'sgst amount', 'sgstamount')),
+        igst_amount: toNum(pickFirst(flat, 'igst_amount', 'igst', 'igst amount', 'igstamount')),
+        cess_amount: toNum(pickFirst(flat, 'cess_amount', 'cess', 'cess amount', 'cessamount')),
     };
 }
 
