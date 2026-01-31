@@ -78,13 +78,35 @@ const Index = () => {
     }
   };
 
-  const handleGenerateGSTR = () => {
+  const handleGenerateGSTR = async () => {
     setIsGenerating(true);
-    // Mock Delay
-    setTimeout(() => {
+    try {
+      // Default to Jan 2024 for demo purposes as per seed data
+      const month = 1;
+      const year = 2024;
+
+      const response = await fetch(`/api/gstr3b?month=${month}&year=${year}`);
+
+      if (!response.ok) {
+        throw new Error("Failed to generate report");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `gstr3b_report_${month}_${year}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+    } catch (e) {
+      console.error("GSTR Generation Error", e);
+      alert("Failed to generate GSTR-3B Report");
+    } finally {
       setIsGenerating(false);
-      alert("GSTR-3B Report generated successfully!");
-    }, 2000);
+    }
   };
 
   const handleSyncTally = () => {
