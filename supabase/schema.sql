@@ -6,6 +6,13 @@ CREATE TABLE IF NOT EXISTS compliance_records (
     status TEXT CHECK (status IN ('Safe', 'Failed', 'Pending')),
     amount NUMERIC NOT NULL,
     invoice_date DATE NOT NULL,
+    taxable_value NUMERIC DEFAULT 0,
+    cgst_amount NUMERIC DEFAULT 0,
+    sgst_amount NUMERIC DEFAULT 0,
+    igst_amount NUMERIC DEFAULT 0,
+    cess_amount NUMERIC DEFAULT 0,
+    invoice_number TEXT DEFAULT 'UNKNOWN',
+    place_of_supply TEXT DEFAULT 'UNKNOWN',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 

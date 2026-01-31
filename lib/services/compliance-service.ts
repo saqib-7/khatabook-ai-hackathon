@@ -9,6 +9,13 @@ export interface ComplianceRecord {
     status: 'Safe' | 'Failed' | 'Pending';
     amount: number;
     invoice_date: string;
+    taxable_value?: number;
+    cgst_amount?: number;
+    sgst_amount?: number;
+    igst_amount?: number;
+    cess_amount?: number;
+    invoice_number?: string;
+    place_of_supply?: string;
 }
 
 export interface ComplianceStats {
@@ -87,7 +94,14 @@ export class ComplianceService {
                     gstin: record.gstin,
                     status: record.status || 'Pending',
                     amount: record.amount,
-                    invoice_date: record.invoice_date || new Date().toISOString().split('T')[0]
+                    invoice_date: record.invoice_date || new Date().toISOString().split('T')[0],
+                    taxable_value: record.taxable_value || 0,
+                    cgst_amount: record.cgst_amount || 0,
+                    sgst_amount: record.sgst_amount || 0,
+                    igst_amount: record.igst_amount || 0,
+                    cess_amount: record.cess_amount || 0,
+                    invoice_number: record.invoice_number || 'UNKNOWN',
+                    place_of_supply: record.place_of_supply || 'UNKNOWN'
                 }])
                 .select()
                 .single();
