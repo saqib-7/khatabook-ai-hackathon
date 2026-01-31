@@ -9,7 +9,46 @@ const fastRouter = new OpenAI({
 
 import { complianceService } from './compliance-service';
 
-// ... (existing imports/setup)
+/** Pick first non-undefined value from obj for given keys (case-insensitive match). */
+function pickFirst(obj: Record<string, unknown>, ...keys: string[]): unknown {
+    const lower: Record<string, unknown> = {};
+    for (const k of Object.keys(obj)) lower[k.toLowerCase().replace(/\s+/g, '_')] = obj[k];
+    for (const key of keys) {
+        const val = obj[key] ?? lower[key.toLowerCase().replace(/\s+/g, '_')];
+        if (val !== undefined && val !== null) return val;
+    }
+    return undefined;
+}
+
+function toNum(val: unknown): number {
+    if (typeof val === 'number' && !Number.isNaN(val)) return val;
+    const n = Number(val);
+    return Number.isNaN(n) ? 0 : n;
+}
+
+function toStringOrNull(val: unknown): string | null {
+    if (val === undefined || val === null) return null;
+    const s = String(val).trim();
+    return s === '' ? null : s;
+}
+
+/** Normalize AI receipt response to expected keys and types for DB/frontend. */
+function normalizeReceiptData(data: Record<string, unknown>): Record<string, unknown> {
+    return {
+        vendor_name: toStringOrNull(pickFirst(data, 'vendor_name', 'vendor name', 'seller_name', 'supplier_name')) ?? data.vendor_name ?? '',
+        gstin: toStringOrNull(pickFirst(data, 'gstin', 'gstin_no', 'gst_number')) ?? data.gstin ?? '',
+        invoice_date: toStringOrNull(pickFirst(data, 'invoice_date', 'invoice date', 'date', 'inv_date')) ?? data.invoice_date ?? '',
+        total_amount: toNum(pickFirst(data, 'total_amount', 'total amount', 'total', 'grand_total', 'amount')),
+        status: (typeof data.status === 'string' && (data.status === 'Safe' || data.status === 'Failed')) ? data.status : (data.gstin ? 'Safe' : 'Failed'),
+        invoice_number: toStringOrNull(pickFirst(data, 'invoice_number', 'invoice_no', 'inv_no', 'bill_no', 'invoice no', 'bill no')),
+        place_of_supply: toStringOrNull(pickFirst(data, 'place_of_supply', 'pos', 'place of supply')),
+        taxable_value: toNum(pickFirst(data, 'taxable_value', 'taxable value', 'taxable_value_before_tax', 'assessable_value')),
+        cgst_amount: toNum(pickFirst(data, 'cgst_amount', 'cgst', 'cgst amount')),
+        sgst_amount: toNum(pickFirst(data, 'sgst_amount', 'sgst', 'sgst amount')),
+        igst_amount: toNum(pickFirst(data, 'igst_amount', 'igst', 'igst amount')),
+        cess_amount: toNum(pickFirst(data, 'cess_amount', 'cess', 'cess amount')),
+    };
+}
 
 export class AIService {
     async generateChatResponse(message: string): Promise<ServiceResponse<string>> {
@@ -83,7 +122,28 @@ INSTRUCTIONS:
                     {
                         role: "user",
                         content: [
-                            { type: "text", text: "Analyze this image and extract the following invoice details in JSON format: vendor_name, gstin (of vendor), invoice_date (YYYY-MM-DD), total_amount (number), status (Safe/Failed based on if GSTIN is present). If any field is missing, return null for it. do not write json at start and end" },
+                            { type: "text", text: `This image is an Indian GST invoice or bill. Analyze it and extract the following details.
+
+WHERE TO FIND EACH FIELD:
+- Invoice number: Look at the top of the invoice for "Invoice No.", "Bill No.", "Inv No.", or similar. Extract the full number or reference.
+- Place of supply: Look for "Place of Supply", "POS", or state name/code (e.g. "Maharashtra", "27"). Use state name or code as found.
+- Taxable value: Total value before GST, often in a tax summary or table (e.g. "Taxable Value", "Assessable Value").
+- CGST / SGST: From the tax breakdown table. Use 0 if not present (e.g. inter-state supply uses IGST only).
+- IGST: From the tax breakdown. Use 0 if not present (e.g. intra-state supply uses CGST+SGST only).
+- CESS: From the tax breakdown. Use 0 if not present.
+
+OUTPUT: Return a single JSON object with exactly these keys. Use raw JSON only (no markdown, no \`\`\`json or surrounding text).
+Keys: vendor_name, gstin, invoice_date, total_amount, status, invoice_number, place_of_supply, taxable_value, cgst_amount, sgst_amount, igst_amount, cess_amount.
+
+RULES:
+- vendor_name: string (seller/supplier name).
+- gstin: string (vendor GSTIN, 15 chars if present).
+- invoice_date: string in YYYY-MM-DD.
+- total_amount: number (invoice total including tax).
+- status: "Safe" if GSTIN is present and valid-looking, else "Failed".
+- invoice_number: string or null if not found.
+- place_of_supply: string (state name or code) or null if not found.
+- taxable_value, cgst_amount, sgst_amount, igst_amount, cess_amount: numbers only; use 0 when missing or not applicable.` },
                             {
                                 type: "image_url",
                                 image_url: {
@@ -104,7 +164,8 @@ INSTRUCTIONS:
                 // Clean up markdown code blocks if present
                 const jsonStr = content.replace(/```json/g, '').replace(/```/g, '').trim();
                 const data = JSON.parse(jsonStr);
-                return { success: true, data };
+                const normalized = normalizeReceiptData(data);
+                return { success: true, data: normalized };
             } catch (e) {
                 console.error("Failed to parse OCR JSON", content);
                 return { success: false, error: "Failed to parse receipt data" };
