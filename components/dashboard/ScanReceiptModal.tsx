@@ -19,6 +19,13 @@ interface ScannedData {
   total_amount?: number;
   status?: string;
   compliance_issues?: string[];
+  taxable_value?: number;
+  cgst_amount?: number;
+  sgst_amount?: number;
+  igst_amount?: number;
+  cess_amount?: number;
+  invoice_number?: string;
+  place_of_supply?: string;
 }
 
 function DotGridBackground() {
@@ -75,7 +82,7 @@ function TerminalProcessing({ logs }: { logs: string[] }) {
   );
 }
 
-function ResultCard({ data, onClose, onSave }: { data: ScannedData; onClose: () => void; onSave: (status: 'Safe' | 'Failed') => void }) {
+function ResultCard({ data, onClose, onSave, isSaving }: { data: ScannedData; onClose: () => void; onSave: (status: 'Safe' | 'Failed') => void; isSaving: boolean }) {
   const isSafe = !data.status || data.status === 'Safe';
 
   const formatCurrency = (val?: number) => {
@@ -204,9 +211,10 @@ function ResultCard({ data, onClose, onSave }: { data: ScannedData; onClose: () 
         <Button
           className="w-full h-12 border-2 border-black bg-white text-black hover:bg-black hover:text-white transition-colors uppercase font-bold tracking-widest text-xs flex items-center justify-center gap-2 mb-3 rounded-none"
           onClick={() => onSave(isSafe ? 'Safe' : 'Failed')}
+          disabled={isSaving}
         >
           {isSafe ? <CheckCircle2 className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
-          {isSafe ? "APPROVE FOR PAYMENT" : "BLOCK PAYMENT"}
+          {isSaving ? "SAVING..." : (isSafe ? "APPROVE FOR PAYMENT" : "BLOCK PAYMENT")}
         </Button>
 
         <div className="text-center">
@@ -312,7 +320,14 @@ export function ScanReceiptModal({ isOpen, onClose, onScanComplete }: ScanReceip
         gstin: scannedData.gstin,
         amount: scannedData.total_amount,
         status: status,
-        invoice_date: scannedData.invoice_date
+        invoice_date: scannedData.invoice_date,
+        taxable_value: scannedData.taxable_value,
+        cgst_amount: scannedData.cgst_amount,
+        sgst_amount: scannedData.sgst_amount,
+        igst_amount: scannedData.igst_amount,
+        cess_amount: scannedData.cess_amount,
+        invoice_number: scannedData.invoice_number,
+        place_of_supply: scannedData.place_of_supply
       };
 
       const res = await fetch('/api/compliance', {
@@ -595,7 +610,7 @@ export function ScanReceiptModal({ isOpen, onClose, onScanComplete }: ScanReceip
           )}
 
           {scanState === "result" && scannedData && (
-            <ResultCard data={scannedData} onClose={handleClose} onSave={handleSave} />
+            <ResultCard data={scannedData} onClose={handleClose} onSave={handleSave} isSaving={isSaving} />
           )}
         </div>
       </div>

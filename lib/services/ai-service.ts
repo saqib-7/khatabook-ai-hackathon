@@ -83,7 +83,7 @@ INSTRUCTIONS:
                     {
                         role: "user",
                         content: [
-                            { type: "text", text: "Analyze this image and extract the following invoice details in JSON format: vendor_name, gstin (of vendor), invoice_date (YYYY-MM-DD), total_amount (number), status (Safe/Failed based on if GSTIN is present). If any field is missing, return null for it. do not write json at start and end" },
+                            { type: "text", text: "Analyze this image and extract the following invoice details in JSON format: vendor_name, gstin (of vendor), invoice_date (YYYY-MM-DD), total_amount (number), taxable_value (number), cgst_amount (number), sgst_amount (number), igst_amount (number), cess_amount (number), invoice_number (string), place_of_supply (string), status (Safe/Failed based on if GSTIN is present). If any field is missing, return null for it. do not write json at start and end" },
                             {
                                 type: "image_url",
                                 image_url: {
