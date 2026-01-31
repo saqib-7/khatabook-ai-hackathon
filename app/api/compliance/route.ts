@@ -17,3 +17,48 @@ export async function GET() {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
+
+export async function POST(req: Request) {
+    try {
+        const body = await req.json();
+        const res = await complianceService.addComplianceRecord(body);
+
+        if (!res.success) {
+            return NextResponse.json({ error: res.error }, { status: 500 });
+        }
+
+        return NextResponse.json(res.data);
+    } catch (e) {
+        return NextResponse.json({ error: "Invalid Request" }, { status: 400 });
+    }
+}
+
+export async function PATCH(req: Request) {
+    try {
+        const body = await req.json();
+        const { id, ...updates } = body;
+        if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
+
+        const res = await complianceService.updateComplianceRecord(id, updates);
+        if (!res.success) return NextResponse.json({ error: res.error }, { status: 500 });
+
+        return NextResponse.json(res.data);
+    } catch (e) {
+        return NextResponse.json({ error: "Invalid Request" }, { status: 400 });
+    }
+}
+
+export async function DELETE(req: Request) {
+    try {
+        const { searchParams } = new URL(req.url);
+        const id = searchParams.get('id');
+        if (!id) return NextResponse.json({ error: "Missing ID" }, { status: 400 });
+
+        const res = await complianceService.deleteComplianceRecord(id);
+        if (!res.success) return NextResponse.json({ error: res.error }, { status: 500 });
+
+        return NextResponse.json({ success: true });
+    } catch (e) {
+        return NextResponse.json({ error: "Invalid Request" }, { status: 400 });
+    }
+}

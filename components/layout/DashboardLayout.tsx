@@ -9,16 +9,18 @@ interface DashboardLayoutProps {
   onScanClick?: () => void;
   isScanModalOpen?: boolean;
   onCloseScanModal?: () => void;
+  onScanComplete?: () => void;
 }
 
-export function DashboardLayout({ 
-  children, 
+export function DashboardLayout({
+  children,
   onScanClick,
   isScanModalOpen = false,
-  onCloseScanModal
+  onCloseScanModal,
+  onScanComplete
 }: DashboardLayoutProps) {
   const [internalScanOpen, setInternalScanOpen] = useState(false);
-  
+
   // Use external state if provided, otherwise use internal
   const scanOpen = onScanClick ? isScanModalOpen : internalScanOpen;
   const handleScanClick = onScanClick || (() => setInternalScanOpen(true));
@@ -28,7 +30,7 @@ export function DashboardLayout({
     <div className="min-h-screen bg-background">
       {/* Desktop Sidebar */}
       <Sidebar onScanClick={handleScanClick} />
-      
+
       {/* Main Content */}
       <main className="lg:ml-64 min-h-screen pb-20 lg:pb-0">
         <div className="p-4 lg:p-8">
@@ -43,9 +45,10 @@ export function DashboardLayout({
       <CFOChatWidget />
 
       {/* Scan Receipt Modal */}
-      <ScanReceiptModal 
-        isOpen={scanOpen} 
-        onClose={handleCloseScan} 
+      <ScanReceiptModal
+        isOpen={scanOpen}
+        onClose={handleCloseScan}
+        onScanComplete={onScanComplete}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/db/supabase';
+import { supabaseAdmin } from '@/lib/db/supabase-admin';
 import { ServiceResponse } from './types';
 
 export interface ComplianceRecord {
@@ -61,6 +62,74 @@ export class ComplianceService {
 
         } catch (error: any) {
             console.error('Error fetching stats:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async addComplianceRecord(record: Partial<ComplianceRecord>): Promise<ServiceResponse<ComplianceRecord>> {
+        try {
+            // Basic validation
+            if (!record.vendor_name || !record.amount) {
+                throw new Error("Missing required fields");
+            }
+
+            // USE ADMIN CLIENT HERE TO BYPASS RLS IF AVAILABLE
+            const client = supabaseAdmin || supabase;
+
+            if (!supabaseAdmin) {
+                console.warn("Using public client for compliance insert. This may fail due to RLS.");
+            }
+
+            const { data, error } = await client
+                .from('compliance_records')
+                .insert([{
+                    vendor_name: record.vendor_name,
+                    gstin: record.gstin,
+                    status: record.status || 'Pending',
+                    amount: record.amount,
+                    invoice_date: record.invoice_date || new Date().toISOString().split('T')[0]
+                }])
+                .select()
+                .single();
+
+            if (error) throw error;
+
+            return { success: true, data: data as ComplianceRecord };
+
+        } catch (error: any) {
+            console.error('Error adding compliance record:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    async updateComplianceRecord(id: string, updates: Partial<ComplianceRecord>): Promise<ServiceResponse<ComplianceRecord>> {
+        try {
+            const client = supabaseAdmin || supabase;
+            const { data, error } = await client
+                .from('compliance_records')
+                .update(updates)
+                .eq('id', id)
+                .select()
+                .single();
+
+            if (error) throw error;
+            return { success: true, data: data as ComplianceRecord };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    async deleteComplianceRecord(id: string): Promise<ServiceResponse<boolean>> {
+        try {
+            const client = supabaseAdmin || supabase;
+            const { error } = await client
+                .from('compliance_records')
+                .delete()
+                .eq('id', id);
+
+            if (error) throw error;
+            return { success: true, data: true };
+        } catch (error: any) {
             return { success: false, error: error.message };
         }
     }

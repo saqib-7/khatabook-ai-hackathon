@@ -110,6 +110,7 @@ const Index = () => {
       onScanClick={() => setIsScanModalOpen(true)}
       isScanModalOpen={isScanModalOpen}
       onCloseScanModal={() => setIsScanModalOpen(false)}
+      onScanComplete={handleRefresh}
     >
       {/* Page Header */}
       <div className="mb-8">
@@ -163,7 +164,7 @@ const Index = () => {
       </div>
 
       {/* Compliance Table */}
-      <ComplianceTable key={refreshTrigger} />
+      <ComplianceTable key={refreshTrigger} onStatsRefresh={fetchStats} />
 
       {/* Quick Actions */}
       <div className="mt-8 border border-dotted border-foreground/30 p-4">

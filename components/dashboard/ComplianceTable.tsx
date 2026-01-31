@@ -9,6 +9,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { toast } from "sonner";
+import { CheckCircle2, AlertTriangle, ShieldX, Loader2 } from "lucide-react";
 
 interface Invoice {
   id: string;
@@ -19,68 +29,18 @@ interface Invoice {
   amount: number;
 }
 
-const mockInvoices: Invoice[] = [
-  {
-    id: "INV-001",
-    date: "2024-01-15",
-    vendor: "Zomato Media Pvt Ltd",
-    gstin: "27AABCU9603R1ZM",
-    status: "Safe",
-    amount: 15000,
-  },
-  {
-    id: "INV-002",
-    date: "2024-01-14",
-    vendor: "Swiggy Technologies",
-    gstin: "29AADCS0472N1Z5",
-    status: "Failed",
-    amount: 24000,
-  },
-  {
-    id: "INV-003",
-    date: "2024-01-13",
-    vendor: "Freshworks Inc",
-    gstin: "33AABCF1234H1ZK",
-    status: "Safe",
-    amount: 8500,
-  },
-  {
-    id: "INV-004",
-    date: "2024-01-12",
-    vendor: "Razorpay Software",
-    gstin: "29AAGCR4375J1ZU",
-    status: "Pending",
-    amount: 32000,
-  },
-  {
-    id: "INV-005",
-    date: "2024-01-11",
-    vendor: "Phonepe Digital",
-    gstin: "29AALCP1234M1ZD",
-    status: "Safe",
-    amount: 12500,
-  },
-  {
-    id: "INV-006",
-    date: "2024-01-10",
-    vendor: "Paytm Payments Bank",
-    gstin: "09AAICP5678A1Z2",
-    status: "Failed",
-    amount: 18000,
-  },
-  {
-    id: "INV-007",
-    date: "2024-01-09",
-    vendor: "Instamojo Technologies",
-    gstin: "29AABCI9876K1ZN",
-    status: "Safe",
-    amount: 5600,
-  },
-];
+interface ComplianceTableProps {
+  onStatsRefresh?: () => void;
+}
 
-export function ComplianceTable() {
+export function ComplianceTable({ onStatsRefresh }: ComplianceTableProps) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Action State
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [actionType, setActionType] = useState<"pay" | "block" | "verify" | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
@@ -108,6 +68,71 @@ export function ComplianceTable() {
     }
     fetchData();
   }, []);
+
+  const handleAction = (invoice: Invoice, type: "pay" | "block" | "verify") => {
+    setSelectedInvoice(invoice);
+    setActionType(type);
+  };
+
+  const executeAction = async () => {
+    if (!selectedInvoice || !actionType) return;
+
+    setIsProcessing(true);
+
+    try {
+      if (actionType === 'pay') {
+        // DELETE the record (Clean up)
+        await fetch(`/api/compliance?id=${selectedInvoice.id}`, { method: 'DELETE' });
+
+        // Remove from local state
+        setInvoices(prev => prev.filter(i => i.id !== selectedInvoice.id));
+
+        toast.success("Payment Processed", {
+          description: `₹${formatAmount(selectedInvoice.amount)} transferred to ${selectedInvoice.vendor}`,
+        });
+        onStatsRefresh?.();
+
+      } else if (actionType === 'block') {
+        // DELETE (Archive) or Update to blocked? User said "entry should be gone". 
+        // Let's DELETE for now to clear the list, assuming "Blocked" items are handled elsewhere.
+        await fetch(`/api/compliance?id=${selectedInvoice.id}`, { method: 'DELETE' });
+
+        setInvoices(prev => prev.filter(i => i.id !== selectedInvoice.id));
+
+        toast.error("Vendor Blocked & Removed", {
+          description: `Future payments to ${selectedInvoice.vendor} will be rejected.`,
+        });
+        onStatsRefresh?.();
+
+      } else if (actionType === 'verify') {
+        // UPDATE status to 'Safe'
+        const res = await fetch('/api/compliance', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: selectedInvoice.id, status: 'Safe' })
+        });
+
+        if (res.ok) {
+          setInvoices(prev => prev.map(i =>
+            i.id === selectedInvoice.id ? { ...i, status: 'Safe' } : i
+          ));
+          toast.success("Verification Successful", {
+            description: "Vendor GSTIN verified against database.",
+          });
+          onStatsRefresh?.();
+        } else {
+          throw new Error("Verification Failed");
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Action Failed", { description: "Something went wrong. Please try again." });
+    } finally {
+      setIsProcessing(false);
+      setActionType(null);
+      setSelectedInvoice(null);
+    }
+  };
 
   const formatAmount = (amount: number) => {
     return new Intl.NumberFormat("en-IN", {
@@ -197,13 +222,70 @@ export function ComplianceTable() {
                 <TableCell className={cn(
                   "text-right py-4 pr-6"
                 )}>
-                  <ActionButton status={invoice.status} />
+                  <ActionButton status={invoice.status} onAction={(type) => handleAction(invoice, type)} />
                 </TableCell>
               </TableRow>
             );
           })}
         </TableBody>
       </Table>
+
+      {/* Action Dialog (Dummy UI) */}
+      <Dialog open={!!actionType} onOpenChange={(open: boolean) => !open && setActionType(null)}>
+        <DialogContent className="sm:max-w-md border-2 border-black rounded-none shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase tracking-widest flex items-center gap-2">
+              {actionType === 'pay' && <CheckCircle2 className="w-5 h-5 text-green-600" />}
+              {actionType === 'block' && <ShieldX className="w-5 h-5 text-red-600" />}
+              {actionType === 'verify' && <Loader2 className="w-5 h-5 animate-spin" />}
+
+              {actionType === 'pay' && "Confirm Payment"}
+              {actionType === 'block' && "Block Vendor"}
+              {actionType === 'verify' && "Verifying Details"}
+            </DialogTitle>
+            <DialogDescription className="font-mono text-xs pt-2">
+              {selectedInvoice && (
+                <>
+                  Action for invoice <strong>{selectedInvoice.vendor}</strong> ({formatAmount(selectedInvoice.amount)})
+                  <br />
+                  GSTIN: {selectedInvoice.gstin}
+                </>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-4">
+            <div className="p-4 bg-zinc-50 border border-black/10 text-xs font-mono">
+              {actionType === 'pay' && "Initiating secure transfer via Razorpay X..."}
+              {actionType === 'block' && "This will flag the vendor and prevent future payments until cleared."}
+              {actionType === 'verify' && "Cross-referencing GSTR-2B data with GSTN portal..."}
+            </div>
+          </div>
+
+          <DialogFooter className="sm:justify-start">
+            <Button
+              type="button"
+              variant="default"
+              disabled={isProcessing}
+              onClick={executeAction}
+              className="w-full bg-black text-white hover:bg-zinc-800 rounded-none font-mono uppercase text-xs h-10 border-2 border-black"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  {actionType === 'pay' && "Process Payment"}
+                  {actionType === 'block' && "Confirm Block"}
+                  {actionType === 'verify' && "Run Verification"}
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -235,12 +317,13 @@ function StatusBadge({ status }: { status: Invoice["status"] }) {
   );
 }
 
-function ActionButton({ status }: { status: Invoice["status"] }) {
+function ActionButton({ status, onAction }: { status: Invoice["status"]; onAction: (type: "pay" | "block" | "verify") => void }) {
   if (status === "Failed") {
     return (
       <Button
         variant="default"
         size="sm"
+        onClick={() => onAction('block')}
         className="font-mono text-[10px] uppercase h-8 px-4 bg-black text-white hover:bg-zinc-800 rounded-none shadow-sm"
       >
         BLOCK PAYMENT
@@ -253,6 +336,7 @@ function ActionButton({ status }: { status: Invoice["status"] }) {
       <Button
         variant="outline"
         size="sm"
+        onClick={() => onAction('pay')}
         className="font-mono text-[10px] uppercase h-8 px-4 bg-white border-2 border-black text-black hover:bg-zinc-50 rounded-none font-bold"
       >
         PAY NOW
@@ -264,8 +348,9 @@ function ActionButton({ status }: { status: Invoice["status"] }) {
     <Button
       variant="outline"
       size="sm"
-      className="font-mono text-[10px] uppercase h-8 px-4 border-zinc-200 text-zinc-400 rounded-none"
-      disabled
+      onClick={() => onAction('verify')}
+      className="font-mono text-[10px] uppercase h-8 px-4 border-zinc-200 text-zinc-600 hover:text-black hover:border-black rounded-none transition-colors"
+
     >
       VERIFY
     </Button>

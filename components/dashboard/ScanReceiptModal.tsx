@@ -3,9 +3,11 @@ import { Upload, X, ScanLine, Camera, AlertTriangle, ShieldX, Ban, CreditCard, C
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
+
 interface ScanReceiptModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onScanComplete?: () => void;
 }
 
 type ScanState = "upload" | "processing" | "result" | "error";
@@ -73,7 +75,7 @@ function TerminalProcessing({ logs }: { logs: string[] }) {
   );
 }
 
-function ResultCard({ data, onClose }: { data: ScannedData; onClose: () => void }) {
+function ResultCard({ data, onClose, onSave }: { data: ScannedData; onClose: () => void; onSave: (status: 'Safe' | 'Failed') => void }) {
   const isSafe = !data.status || data.status === 'Safe';
 
   const formatCurrency = (val?: number) => {
@@ -201,7 +203,7 @@ function ResultCard({ data, onClose }: { data: ScannedData; onClose: () => void 
       <div className="mt-auto">
         <Button
           className="w-full h-12 border-2 border-black bg-white text-black hover:bg-black hover:text-white transition-colors uppercase font-bold tracking-widest text-xs flex items-center justify-center gap-2 mb-3 rounded-none"
-          onClick={onClose}
+          onClick={() => onSave(isSafe ? 'Safe' : 'Failed')}
         >
           {isSafe ? <CheckCircle2 className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
           {isSafe ? "APPROVE FOR PAYMENT" : "BLOCK PAYMENT"}
@@ -212,7 +214,7 @@ function ResultCard({ data, onClose }: { data: ScannedData; onClose: () => void 
             onClick={onClose}
             className="text-[10px] uppercase tracking-widest hover:underline flex items-center justify-center gap-1 mx-auto"
           >
-            <X className="w-3 h-3" /> CLOSE
+            <X className="w-3 h-3" /> CLOSE WITHOUT SAVING
           </button>
         </div>
       </div>
@@ -221,76 +223,212 @@ function ResultCard({ data, onClose }: { data: ScannedData; onClose: () => void 
   );
 }
 
-export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
+export function ScanReceiptModal({ isOpen, onClose, onScanComplete }: ScanReceiptModalProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [scanState, setScanState] = useState<ScanState>("upload");
   const [logs, setLogs] = useState<string[]>([]);
   const [scannedData, setScannedData] = useState<ScannedData | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isSaving, setIsSaving] = useState(false); // Add saving state
+
+  // ... (Camera State remains same) ...
+  // Camera State
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  }, []);
 
   const handleClose = useCallback(() => {
+    stopCamera();
     setScanState("upload");
     setLogs([]);
     setScannedData(null);
+    setIsSaving(false);
     onClose();
-  }, [onClose]);
+  }, [onClose, stopCamera]);
 
-  const processFile = async (file: File) => {
-    setScanState("processing");
-    setLogs(["INITIALIZING VISION ENGINE...", "UPLOADING IMAGE...", "WAITING FOR CLAUDE AI..."]);
+
+  const startCamera = async () => {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      alert("Camera access is only available in secure contexts (HTTPS or localhost).\n\nIf you are on mobile using an IP address, the browser blocks camera access for security. Please upload a file instead.");
+      return;
+    }
 
     try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const dataUrl = reader.result as string;
-        const matches = dataUrl.match(/^data:(.+);base64,(.*)$/);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' }
+      });
 
-        if (!matches) {
-          setLogs(prev => [...prev, "ERROR: INVALID IMAGE DATA"]);
-          setTimeout(() => setScanState("upload"), 2000);
-          return;
-        }
-
-        const detectedMime = matches[1];
-        const base64String = matches[2];
-
-        setLogs(prev => [...prev, `DETECTED FORMAT: ${detectedMime}`]);
-
-        try {
-          const res = await fetch('/api/scan', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              image: base64String,
-              mimeType: detectedMime
-            }),
-          });
-
-          setLogs(prev => [...prev, "ANALYZING PIXELS...", "EXTRACTING ENTITIES..."]);
-
-          const data = await res.json();
-
-          if (data.data) {
-            setLogs(prev => [...prev, "DATA EXTRACTED SUCCESSFULLY.", "RENDERING RESULTS..."]);
-            setTimeout(() => {
-              setScannedData(data.data);
-              setScanState("result");
-            }, 800);
-          } else {
-            throw new Error(data.error || "Extraction failed");
-          }
-        } catch (err: any) {
-          setLogs(prev => [...prev, `ERROR: ${err.message}`]);
-          setTimeout(() => setScanState("upload"), 4000);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (e) {
-      console.error(e);
-      setScanState("upload");
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      streamRef.current = stream;
+      setIsCameraActive(true);
+    } catch (err) {
+      console.error("Camera Error:", err);
+      alert("Unable to access camera. Please allow permissions.");
     }
   };
 
+  const captureImage = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+
+        stopCamera();
+        processBase64(dataUrl);
+      }
+    }
+  };
+
+  const handleSave = async (status: 'Safe' | 'Failed') => {
+    if (!scannedData) return;
+    setIsSaving(true);
+
+    try {
+      // Prepare payload
+      const payload = {
+        vendor_name: scannedData.vendor_name,
+        gstin: scannedData.gstin,
+        amount: scannedData.total_amount,
+        status: status,
+        invoice_date: scannedData.invoice_date
+      };
+
+      const res = await fetch('/api/compliance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) throw new Error("Failed to save record");
+
+      // Success
+      if (onScanComplete) onScanComplete();
+      handleClose();
+
+    } catch (e) {
+      console.error("Save failed", e);
+      alert("Failed to save record. Please try again.");
+      setIsSaving(false);
+    }
+  };
+
+  // Helper to resize image
+  const resizeImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Max dimension 1024px to keep size low
+          const MAX_SIZE = 1024;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          // Compress to JPEG 0.7
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          resolve(dataUrl);
+        };
+        img.onerror = (err) => reject(err);
+      };
+      reader.onerror = (err) => reject(err);
+    });
+  };
+
+  const processBase64 = async (dataUrl: string) => {
+    setScanState("processing");
+    setLogs(["CAPTURING IMAGE...", "OPTIMIZING FOR CLAUDE...", "CONNECTING TO VISION ENGINE..."]);
+
+    try {
+      // Ensure we have a valid base64
+      const matches = dataUrl.match(/^data:(.+);base64,(.*)$/);
+      if (!matches) throw new Error("Invalid image data");
+
+      const detectedMime = matches[1];
+      const base64String = matches[2];
+
+      setLogs(prev => [...prev, `FORMAT: ${detectedMime}`, "SENDING TO CLOUD..."]);
+
+      const res = await fetch('/api/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image: base64String,
+          mimeType: detectedMime
+        }),
+      });
+
+      setLogs(prev => [...prev, "ANALYZING RECEIPT...", "EXTRACTING DATA..."]);
+      const data = await res.json();
+
+      if (data.data) {
+        setLogs(prev => [...prev, "SUCCESS.", "RENDERING..."]);
+        setTimeout(() => {
+          setScannedData(data.data);
+          setScanState("result");
+        }, 800);
+      } else {
+        throw new Error(data.error || "Extraction failed");
+      }
+
+    } catch (err: any) {
+      setLogs(prev => [...prev, `ERROR: ${err.message}`]);
+      setTimeout(() => setScanState("upload"), 4000);
+    }
+  };
+
+  const processFile = async (file: File) => {
+    setScanState("processing");
+    setLogs(["INITIALIZING VISION ENGINE...", "COMPRESSING IMAGE...", "WAITING FOR CLAUDE AI..."]);
+
+    try {
+      const resizedDataUrl = await resizeImage(file);
+      processBase64(resizedDataUrl);
+    } catch (e) {
+      console.error(e);
+      setScanState("upload");
+      alert("Failed to process image. Please try another file.");
+    }
+  };
+
+  // ... (Event handlers remain same) ...
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       processFile(e.target.files[0]);
@@ -318,7 +456,7 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
     setIsDragging(false);
   }, []);
 
-  // Reset state when modal opens
+  // ... (useEffect remains same) ...
   useEffect(() => {
     if (isOpen) {
       setScanState("upload");
@@ -364,8 +502,8 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
         <div className="flex-1 overflow-hidden relative">
           <DotGridBackground />
 
-          {scanState === "upload" && (
-            <div className="h-full p-8 flex flex-col items-center justify-center relative z-10">
+          {scanState === "upload" && !isCameraActive && (
+            <div className="h-full p-8 flex flex-col items-center justify-center relative z-10 text-center">
               <input
                 type="file"
                 ref={fileInputRef}
@@ -376,7 +514,7 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
 
               <div
                 className={cn(
-                  "w-full h-64 border-2 border-dashed border-black/30 flex flex-col items-center justify-center cursor-pointer hover:bg-black/5 transition-all",
+                  "w-full h-48 border-2 border-dashed border-black/30 flex flex-col items-center justify-center cursor-pointer hover:bg-black/5 transition-all mb-6",
                   isDragging && "border-black bg-black/5"
                 )}
                 onClick={() => fileInputRef.current?.click()}
@@ -389,13 +527,62 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
                 <div className="font-mono text-xs text-black/40 mt-2 uppercase">or click to browse</div>
               </div>
 
+              <div className="w-full flex items-center justify-between gap-4">
+                <div className="h-px bg-black/10 flex-1" />
+                <span className="font-mono text-[10px] text-black/40 uppercase">OR USE CAMERA</span>
+                <div className="h-px bg-black/10 flex-1" />
+              </div>
+
               <Button
-                className="mt-8 h-12 border-2 border-black bg-transparent text-black hover:bg-black hover:text-white transition-colors uppercase font-bold tracking-widest text-xs rounded-none px-8"
-                onClick={() => fileInputRef.current?.click()}
+                className="mt-6 h-12 w-full border-2 border-black bg-black text-white hover:bg-zinc-800 transition-colors uppercase font-bold tracking-widest text-xs rounded-none px-8"
+                onClick={startCamera}
               >
                 <Camera className="h-4 w-4 mr-2" />
-                Start Capture
+                Open Camera
               </Button>
+            </div>
+          )}
+
+          {scanState === "upload" && isCameraActive && (
+            <div className="h-full relative flex flex-col">
+              <div className="flex-1 bg-black relative overflow-hidden">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className="absolute inset-0 w-full h-full object-cover"
+                />
+                <canvas ref={canvasRef} className="hidden" />
+
+                {/* Camera Overlay */}
+                <div className="absolute inset-0 border-[40px] border-black/50 pointer-events-none">
+                  <div className="w-full h-full border-2 border-white/50 relative">
+                    <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-white" />
+                    <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-white" />
+                    <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-white" />
+                    <div className="absolute bottom-0 right-0 w-4 h-4 border-b-2 border-r-2 border-white" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-white border-t-2 border-black flex items-center justify-between gap-4">
+                <Button
+                  variant="ghost"
+                  className="font-mono text-[10px] h-12 w-12 rounded-full border border-black/10"
+                  onClick={stopCamera}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+
+                <button
+                  onClick={captureImage}
+                  className="h-16 w-16 rounded-full border-4 border-black bg-white flex items-center justify-center hover:bg-black/5 active:scale-95 transition-all"
+                >
+                  <div className="h-12 w-12 rounded-full bg-red-600" />
+                </button>
+
+                <div className="w-12" /> {/* Spacer */}
+              </div>
             </div>
           )}
 
@@ -404,7 +591,7 @@ export function ScanReceiptModal({ isOpen, onClose }: ScanReceiptModalProps) {
           )}
 
           {scanState === "result" && scannedData && (
-            <ResultCard data={scannedData} onClose={handleClose} />
+            <ResultCard data={scannedData} onClose={handleClose} onSave={handleSave} />
           )}
         </div>
       </div>
