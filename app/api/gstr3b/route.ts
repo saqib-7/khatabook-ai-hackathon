@@ -66,6 +66,8 @@ export async function GET(req: Request) {
         doc.on('error', reject);
 
         // --- PDF Content ---
+        const startX = 50;
+        const fullWidth = 500; // 550 - 50 = 500 approx width available
 
         // Header
         doc.fontSize(20).text('GSTR-3B Summary Report', { align: 'center' });
@@ -73,77 +75,107 @@ export async function GET(req: Request) {
         doc.fontSize(12).text(`Return Period: ${month.toString().padStart(2, '0')}-${year}`, { align: 'center' });
         doc.moveDown(2);
 
-        // Section 1: Outward Supplies (Sales)
-        doc.fontSize(14).text('Table 3.1: Details of Outward Supplies', { underline: true });
+        // --- Section 1: Outward Supplies (Sales) ---
+        // Ensure X coordinate is reset
+        doc.fontSize(14).text('Table 3.1: Details of Outward Supplies', startX, doc.y, { underline: true });
         doc.moveDown(0.5);
-        doc.fontSize(10).text('(No sales data found - Expenditure only)', { oblique: true });
+        doc.fontSize(10).text('(No sales data found - Expenditure only)', startX, doc.y, { oblique: true });
         doc.moveDown(1);
 
-        // Table Header for Section 1
-        const startX = 50;
         let currentY = doc.y;
 
+        // Table 3.1 Header
+        doc.rect(startX, currentY, fullWidth, 25).stroke(); // Header Box
+
         doc.font('Helvetica-Bold');
-        doc.text('Nature of Supplies', startX, currentY);
-        doc.text('Taxable Value', startX + 200, currentY);
-        doc.text('IGST', startX + 300, currentY);
-        doc.text('CGST', startX + 360, currentY);
-        doc.text('SGST', startX + 420, currentY);
+        doc.text('Nature of Supplies', startX + 5, currentY + 8);
+        doc.text('Taxable Value', startX + 200 + 5, currentY + 8);
+        doc.text('IGST', startX + 275 + 5, currentY + 8);
+        doc.text('CGST', startX + 350 + 5, currentY + 8);
+        doc.text('SGST', startX + 425 + 5, currentY + 8);
         doc.font('Helvetica');
 
-        currentY += 15;
-        doc.moveTo(startX, currentY).lineTo(550, currentY).stroke(); // Line below header
-        currentY += 10;
+        currentY += 25;
 
-        // Hardcoded 0.00 values
-        doc.text('Outward Taxable Supplies', startX, currentY);
-        doc.text('0.00', startX + 200, currentY);
-        doc.text('0.00', startX + 300, currentY);
-        doc.text('0.00', startX + 360, currentY);
-        doc.text('0.00', startX + 420, currentY);
+        // Table 3.1 Row
+        doc.rect(startX, currentY, fullWidth, 25).stroke(); // Row Box
+        doc.text('Outward Taxable Supplies', startX + 5, currentY + 8);
+        doc.text('0.00', startX + 200 + 5, currentY + 8);
+        doc.text('0.00', startX + 275 + 5, currentY + 8);
+        doc.text('0.00', startX + 350 + 5, currentY + 8);
+        doc.text('0.00', startX + 425 + 5, currentY + 8);
 
-        doc.moveDown(4);
+        doc.y = currentY + 40; // Add space after table
 
-        // Section 2: Eligible ITC (Purchases)
-        doc.fontSize(14).text('Table 4: Eligible ITC', { underline: true });
+        // --- Section 2: Eligible ITC (Purchases) ---
+        doc.fontSize(14).text('Table 4: Eligible ITC', startX, doc.y, { underline: true });
         doc.moveDown(1);
 
         currentY = doc.y;
-        doc.fontSize(10);
-        doc.font('Helvetica-Bold');
-        doc.text('Details', startX, currentY);
-        doc.text('IGST', startX + 250, currentY);
-        doc.text('CGST', startX + 320, currentY);
-        doc.text('SGST', startX + 390, currentY);
-        doc.text('Cess', startX + 460, currentY);
+
+        // Table 4 Header
+        doc.rect(startX, currentY, fullWidth, 25).stroke();
+        doc.font('Helvetica-Bold').fontSize(10);
+        doc.text('Details', startX + 5, currentY + 8);
+        doc.text('IGST', startX + 200 + 5, currentY + 8);
+        doc.text('CGST', startX + 275 + 5, currentY + 8);
+        doc.text('SGST', startX + 350 + 5, currentY + 8);
+        doc.text('Cess', startX + 425 + 5, currentY + 8);
         doc.font('Helvetica');
 
-        currentY += 15;
-        doc.moveTo(startX, currentY).lineTo(550, currentY).stroke();
-        currentY += 10;
+        currentY += 25;
 
-        doc.text('(A) ITC Available (whether in full or part)', startX, currentY, { width: 240 });
-        currentY += 15;
+        // Table 4 Row 1: ITC Available
+        doc.rect(startX, currentY, fullWidth, 25).stroke();
+        doc.text('(A) ITC Available (whether in full or part)', startX + 5, currentY + 8);
 
-        doc.text('   (5) All Other ITC', startX, currentY);
-        doc.text(total_igst.toFixed(2), startX + 250, currentY);
-        doc.text(total_cgst.toFixed(2), startX + 320, currentY);
-        doc.text(total_sgst.toFixed(2), startX + 390, currentY);
-        doc.text(total_cess.toFixed(2), startX + 460, currentY);
+        currentY += 25;
 
-        doc.moveDown(3);
+        // Table 4 Row 2: All Other ITC
+        doc.rect(startX, currentY, fullWidth, 25).stroke();
+        doc.text('   (5) All Other ITC', startX + 5, currentY + 8);
+        doc.text(total_igst.toFixed(2), startX + 200 + 5, currentY + 8);
+        doc.text(total_cgst.toFixed(2), startX + 275 + 5, currentY + 8);
+        doc.text(total_sgst.toFixed(2), startX + 350 + 5, currentY + 8);
+        doc.text(total_cess.toFixed(2), startX + 425 + 5, currentY + 8);
 
-        // Summary Footer
-        doc.fontSize(12).text('Summary of Calculated Input Tax Credit:', { underline: true });
+        doc.y = currentY + 40;
+
+        // --- Summary Footer ---
+        doc.fontSize(12).text('Summary of Calculated Input Tax Credit:', startX, doc.y, { underline: true });
         doc.moveDown();
+
+        currentY = doc.y;
+        const summaryWidth = 350;
+        doc.rect(startX, currentY, summaryWidth, 120).stroke(); // Summary Box
+
         doc.fontSize(10);
-        doc.text(`Total Records Processed: ${records?.length || 0}`);
-        doc.moveDown(0.5);
-        doc.text(`Total Taxable Value: ${total_taxable.toFixed(2)}`);
-        doc.text(`Total Integrated Tax (IGST): ${total_igst.toFixed(2)}`);
-        doc.text(`Total Central Tax (CGST): ${total_cgst.toFixed(2)}`);
-        doc.text(`Total State/UT Tax (SGST): ${total_sgst.toFixed(2)}`);
-        doc.text(`Total Cess: ${total_cess.toFixed(2)}`);
+        let textY = currentY + 10;
+        const labelX = startX + 10;
+        const valueX = startX + 250;
+
+        doc.text('Total Records Processed:', labelX, textY);
+        doc.text(records?.length.toString() || '0', valueX, textY);
+        textY += 15;
+
+        doc.text('Total Taxable Value:', labelX, textY);
+        doc.text(total_taxable.toFixed(2), valueX, textY);
+        textY += 15;
+
+        doc.text('Total Integrated Tax (IGST):', labelX, textY);
+        doc.text(total_igst.toFixed(2), valueX, textY);
+        textY += 15;
+
+        doc.text('Total Central Tax (CGST):', labelX, textY);
+        doc.text(total_cgst.toFixed(2), valueX, textY);
+        textY += 15;
+
+        doc.text('Total State/UT Tax (SGST):', labelX, textY);
+        doc.text(total_sgst.toFixed(2), valueX, textY);
+        textY += 15;
+
+        doc.text('Total Cess:', labelX, textY);
+        doc.text(total_cess.toFixed(2), valueX, textY);
 
         doc.end();
     });
